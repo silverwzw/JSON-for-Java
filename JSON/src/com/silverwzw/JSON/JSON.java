@@ -17,7 +17,11 @@ public abstract class JSON implements Cloneable,Serializable,Iterable<Entry<Stri
 	protected Object data;
 	protected JSON() {}
 	public static JSON parse(String json_str){
-		return null; 
+		ArrayList<JsonToken> tokens;
+		JSON root;
+		tokens = JsonToken.getTokenStream(json_str);
+		root = parseTokenStream(tokens,0,tokens.size());
+		return root; 
 	}
 	public static JSON compileAs(Object obj, Class<?> objClass){
 		if (obj == null) {
@@ -75,6 +79,7 @@ public abstract class JSON implements Cloneable,Serializable,Iterable<Entry<Stri
 		return compileAs(obj, obj.getClass());
 	}
 	static String ReflectString(String d) {
+		int index;
 		d = d
 			.replaceAll("\\\\", "\\\\\\\\")
 			.replaceAll("\n", "\\\\n")
@@ -83,7 +88,11 @@ public abstract class JSON implements Cloneable,Serializable,Iterable<Entry<Stri
 			.replaceAll("\b","\\\\b")
 			.replaceAll("\f", "\\\\f")
 			.replaceAll("\r", "\\\\r");
-		
+		index = findUniChar(d);
+		while (index > 0) {
+			d = d.substring(0,index) + uniCharReflectString(d.charAt(index)) + d.substring(index + 1, d.length());
+			index = findUniChar(d);
+		}
 		return "\"" + d + "\"";	
 	}
 	public static JSON JSFunction(String functionBody) {
@@ -124,6 +133,141 @@ public abstract class JSON implements Cloneable,Serializable,Iterable<Entry<Stri
 		return format(0,"\t");
 	}
 	public abstract Object clone();
+	private static String uniCharReflectString(char c) {
+		String ret = "\\u";
+		ret += hex(c / 0x1000);
+		ret += hex(c % 0x1000 / 0x0100);
+		ret += hex(c % 0x0100 / 0x0010);
+		ret += hex(c % 0x0010);
+		return ret;
+	}
+	private static char hex(int i) {
+		assert i >= 0 && i <= 15 : "Int to Hex Char Exception";
+		if (i < 10) {
+			return (char) ('0' + i);
+		} else {
+			return (char) ('a' - 10 + i);
+		}
+	}
+	private static int findUniChar(String s) {
+		for (int i = 0; i < s.length(); i++) {
+			if(127 < s.charAt(i)) {
+				return i;
+			}
+		}
+		return -1;
+	}
+	private static JSON parseTokenStream(ArrayList<JsonToken> tks, int start, int end) {
+		JsonToken first;
+		int stack;
+		if (start <= end){
+			throw new ParsingException();
+		}
+		first = tks.get(start); 
+		if (
+				first.typeEquals(JsonToken.BOOLEAN)
+				|| first.typeEquals(JsonToken.NUMBER)
+				|| first.typeEquals(JsonToken.NULL)
+				|| first.typeEquals(JsonToken.STRING)
+		) {
+			if (end == start +1) {
+				return tks.get(start).jsonObj;
+			} else {
+				throw new ParsingException();
+			}
+		}
+		if (first.typeEquals(JsonToken.LEFT_BRACKET)) {
+			if (end < start +2) {
+				throw new ParsingException();
+			}
+			if (tks.get(start +1).typeEquals(JsonToken.RIGHT_BRACKET)) {
+				if (end == start + 2) {
+					return new JsonArray(new ArrayList<Object>());
+				} else {
+					throw new ParsingException();
+				}
+			}
+			int currentElementStart, curr;
+			ArrayList<JSON> tmpList;
+			tmpList = new ArrayList<JSON>();
+			currentElementStart = curr = start + 1;
+			stack = 0;
+			while(curr < end) {
+				if (tks.get(curr).typeEquals(JsonToken.LEFT_BRACKET) || tks.get(curr).typeEquals(JsonToken.LEFT_BRACE)) {
+					stack++;
+				} else if (tks.get(curr).typeEquals(JsonToken.RIGHT_BRACKET) || tks.get(curr).typeEquals(JsonToken.RIGHT_BRACE)) {
+					stack--;
+					if (stack < 0) {
+						if (curr == end - 1 && tks.get(curr).typeEquals(JsonToken.RIGHT_BRACKET)) {
+							tmpList.add(parseTokenStream(tks,currentElementStart,curr));
+							JSON a[],ret = new JsonArray();
+							a = new JSON[tmpList.size()];
+							ret.data = tmpList.toArray(a);
+							return ret;
+						} else {
+							throw new ParsingException();
+						}
+					}
+				} else if (stack == 0 && tks.get(curr).typeEquals(JsonToken.COMMA)) {
+					tmpList.add(parseTokenStream(tks,currentElementStart,curr));
+					currentElementStart = curr + 1;
+				}
+				curr++;
+			}
+			throw new ParsingException();
+		}
+		if (first.typeEquals(JsonToken.LEFT_BRACE)) {
+			if (end < start +2) {
+				throw new ParsingException();
+			}
+			if (tks.get(start +1).typeEquals(JsonToken.RIGHT_BRACE)) {
+				if (end == start + 2) {
+					return new JsonMap(new HashMap<String,Object>());
+				} else {
+					throw new ParsingException();
+				}
+			}
+			int currentFieldValueStart, curr;
+			String currentFieldName;
+			HashMap<String,JSON> tmpMap;
+			tmpMap = new HashMap<String,JSON>();
+			curr = start + 1;
+			stack = 0;
+			while(curr < end) {
+				if ((!tks.get(curr).typeEquals(JsonToken.STRING)) || (!tks.get(curr + 1).typeEquals(JsonToken.COLON))) {
+					throw new ParsingException();
+				}
+				currentFieldName = tks.get(curr).realStr;
+				curr += 2;
+				currentFieldValueStart = curr;
+				
+				while(curr < end) {
+					if (tks.get(curr).typeEquals(JsonToken.LEFT_BRACKET) || tks.get(curr).typeEquals(JsonToken.LEFT_BRACE)) {
+						stack++;
+					} else if (tks.get(curr).typeEquals(JsonToken.RIGHT_BRACKET) || tks.get(curr).typeEquals(JsonToken.RIGHT_BRACE)) {
+						stack--;
+						if (stack < 0 && tks.get(curr).typeEquals(JsonToken.RIGHT_BRACE)) {
+							if (curr == end - 1) {
+								tmpMap.put(currentFieldName,parseTokenStream(tks,currentFieldValueStart,curr));
+								JsonMap ret = new JsonMap();
+								ret.data = tmpMap;
+								return ret;
+							} else {
+								throw new ParsingException();
+							}
+						}
+					} else if (stack == 0 && tks.get(curr).typeEquals(JsonToken.COMMA)) {
+						tmpMap.put(currentFieldName,parseTokenStream(tks,currentFieldValueStart,curr));
+						curr++;
+						break;
+					}
+					curr++;
+				}
+			}
+			throw new ParsingException();
+		}
+		throw new ParsingException();
+	}
 }
 
 @SuppressWarnings("serial")
@@ -355,7 +499,7 @@ final class JsonNumber extends JsonDirectValue {
 
 @SuppressWarnings("serial")
 final class JsonArray extends JsonContainer {
-	private JsonArray(){};
+	JsonArray(){};
 	JsonArray(Object arr) {
 		assert arr.getClass().isArray()||JSON.implementsInterface(arr.getClass(),List.class) : "Compiling a non-Array object to JsonArray";
 		if (arr.getClass().isArray()) {
@@ -448,6 +592,7 @@ final class JsonMap extends JsonContainer {
 		}
 		data = d;
 	}
+	@SuppressWarnings("unchecked")
 	protected String getJsonString(boolean doFormat, int level, String indentString) {
 		HashMap<String,JSON> d;
 		String s = "", indent = "";
@@ -477,6 +622,7 @@ final class JsonMap extends JsonContainer {
 			return indent + (doFormat?"{\n":"{") + s + indent + "}";
 		}
 	}
+	@SuppressWarnings("unchecked")
 	public boolean equals(Object obj) {
 		if (obj.getClass() != JsonMap.class) {
 			return false;
@@ -501,6 +647,7 @@ final class JsonMap extends JsonContainer {
 		}
 		return true;
 	}
+	@SuppressWarnings("unchecked")
 	public Object toObject() {
 		HashMap<String,JSON> hm;
 		HashMap<String,Object> hmr;
@@ -515,6 +662,7 @@ final class JsonMap extends JsonContainer {
 		}
 		return hmr;
 	}
+	@SuppressWarnings("unchecked")
 	public Object clone() {
 		HashMap<String, JSON> hm1,hm2;
 		hm1 = (HashMap<String,JSON>) data;
@@ -526,6 +674,7 @@ final class JsonMap extends JsonContainer {
 		jsmap.data = hm2;
 		return jsmap;
 	}
+	@SuppressWarnings("unchecked")
 	public Iterator<Entry<String,JSON>> iterator() {
 		return ((HashMap<String,JSON>) data).entrySet().iterator();
 	}
@@ -611,5 +760,320 @@ final class JsonArrayIter implements Iterator<Entry<String,JSON>> {
 		_refer.data = jsarr;
 	}
 }
+
+final class JsonToken {
+	int tokenType;
+	int s;
+	int e;
+	JSON jsonObj;
+	String realStr;
+	static JsonToken STRING = JsonToken.string(0, 0, null, null);
+	static JsonToken NUMBER = JsonToken.number(0, 0, null);
+	static JsonToken BOOLEAN = JsonToken.bool(0, 0, null);
+	static JsonToken NULL = JsonToken.empty(0, 0);
+	static JsonToken LEFT_BRACE = JsonToken.leftBrace(0);
+	static JsonToken LEFT_BRACKET = JsonToken.leftBracket(0);
+	static JsonToken RIGHT_BRACKET = JsonToken.rightBracket(0);
+	static JsonToken RIGHT_BRACE = JsonToken.rightBrace(0);
+	static JsonToken COLON = JsonToken.colon(0);
+	static JsonToken COMMA = JsonToken.comma(0);
+	private static class Carrier {
+		public JSON json;
+		public int end;
+		public String rs;
+		Carrier(JSON js, int i, String s) {
+			json = js;
+			end = i;
+			rs = s;
+		}
+		Carrier(JSON js, int i) {
+			json = js;
+			end = i;
+			rs = null;
+		}
+	};
+	private JsonToken(int i, int start, int end) {
+		tokenType = i;
+		s = start;
+		e = end;
+		jsonObj = null;
+		realStr = null;
+	}
+	private JsonToken(int i, int start, int end, JSON js) {
+		tokenType = i;
+		s = start;
+		e = end;
+		jsonObj = js;
+		realStr = null;
+	}
+	private JsonToken(int i, int start, int end, JSON js, String rs) {
+		tokenType = i;
+		s = start;
+		e = end;
+		jsonObj = js;
+		realStr = rs;
+	}
+	public boolean typeEquals(Object obj) {
+		if (obj.getClass() == Integer.class) {
+			return tokenType == (int)(Integer)obj;
+		} else if (obj.getClass() == JsonToken.class) {
+			return tokenType == ((JsonToken)obj).tokenType;
+		}
+		return false;
+	}
+	static JsonToken string(int start, int end, JsonString js, String rs) {
+		return new JsonToken(0,start,end,js,rs);
+	}
+	static JsonToken number(int start, int end, JsonNumber js) {
+		return new JsonToken(1,start,end,js);
+	}
+	static JsonToken empty(int start, int end) {
+		return new JsonToken(3,start,end,new JsonNull());
+	}
+	static JsonToken bool(int start, int end, JsonBoolean js) {
+		return new JsonToken(5,start,end,js);
+	}
+	static JsonToken leftBrace(int start) {
+		return new JsonToken(6,start, start + 1);
+	}
+	static JsonToken rightBrace(int start) {
+		return new JsonToken(7,start,start + 1);
+	}
+	static JsonToken leftBracket(int start) {
+		return new JsonToken(8,start,start + 1);
+	}
+	static JsonToken rightBracket(int start) {
+		return new JsonToken(9,start,start + 1);
+	}
+	static JsonToken colon(int start) {
+		return new JsonToken(10,start,start + 1);
+	}
+	static JsonToken comma(int start) {
+		return new JsonToken(11,start,start + 1);
+	}
+	public static ArrayList<JsonToken> getTokenStream(String json_str) {
+		ArrayList<JsonToken> tokenStream = new ArrayList<JsonToken>();
+		int curr;
+		Carrier carrier;
+		curr = eatSpaces(0, json_str);
+		while(curr < json_str.length()) {
+			switch (json_str.charAt(curr)) {
+				case '[':
+					tokenStream.add(JsonToken.leftBracket(curr));
+					curr++;
+					break;
+				case '{':
+					tokenStream.add(JsonToken.leftBrace(curr));
+					curr++;
+					break;
+				case '}':
+					tokenStream.add(JsonToken.rightBrace(curr));
+					curr++;
+					break;
+				case ']':
+					tokenStream.add(JsonToken.rightBracket(curr));
+					curr++;
+					break;
+				case ':':
+					tokenStream.add(JsonToken.colon(curr));
+					curr++;
+					break;
+				case ',':
+					tokenStream.add(JsonToken.comma(curr));
+					curr++;
+					break;
+				case '"':
+				case '\'':
+					carrier = eatString(curr, json_str);
+					tokenStream.add(JsonToken.string(curr,carrier.end, (JsonString)carrier.json, carrier.rs));
+					curr = carrier.end;
+					break;
+				case '+':
+				case '-':
+				case '.':
+				case '0':
+				case '1':
+				case '2':
+				case '3':
+				case '4':
+				case '5':
+				case '6':
+				case '7':
+				case '8':
+				case '9':
+					carrier = eatNumber(curr, json_str);
+					tokenStream.add(JsonToken.number(curr,carrier.end, (JsonNumber)carrier.json));
+					curr = carrier.end;
+					break;
+				case 'n':
+					if (!json_str.substring(curr, curr + 4).equals("null")) {
+						throw new LexicalException();
+					}
+					tokenStream.add(JsonToken.empty(curr, curr+4));
+					curr += 4;
+					break;
+				case 't':
+					if (!json_str.substring(curr, curr + 4).equals("true")) {
+						throw new LexicalException();
+					}
+					tokenStream.add(JsonToken.bool(curr, curr + 4, new JsonBoolean(true)));
+					curr += 4;
+					break;
+				case 'f':
+					if (!json_str.substring(curr, curr + 5).equals("false")) {
+						throw new LexicalException();
+					}
+					tokenStream.add(JsonToken.bool(curr, curr + 5, new JsonBoolean(false)));
+					curr += 5;
+					break;
+				default:
+					throw new LexicalException();
+			}
+			curr = eatSpaces(curr, json_str);
+		}
+		return tokenStream;
+	}
+	private static int eatSpaces(int start, String json_str) {
+		while (isSpace(json_str.charAt(start))) {
+			start++;
+		}
+		return start;
+	}
+	private static Carrier eatNumber(int start, String json_str) {
+		double frac = 0, esp = 0.1;
+		int i = 0, exp = 0;
+		boolean positive = true, epositive = true;
+		char tmpc;
+		//eat sign
+		switch (json_str.charAt(start)) {
+			case '-':
+				positive = false;
+			case '+':
+				start++;
+			default:
+				;
+		}
+		//eat int
+		tmpc = json_str.charAt(start);
+		if (tmpc == '0' && json_str.charAt(start + 1) <= '9' && json_str.charAt(start + 1) >= '0' ) {
+			throw new LexicalException();
+		}
+		while (tmpc <= '9' && tmpc >= '0'){
+			i *= 10;
+			i += tmpc - '0';
+			start++;
+			tmpc = json_str.charAt(start);
+		}
+		//eat frac
+		if (json_str.charAt(start) == '.') {
+			start++;
+			tmpc = json_str.charAt(start);
+			while(tmpc <= '9' && tmpc >= '0') {
+				frac += esp * (tmpc - '0');
+				esp /= 10;
+				start++;
+				tmpc = json_str.charAt(start);
+			}
+		}
+		//eat exp
+		tmpc = json_str.charAt(start);
+		if (tmpc == 'e' || tmpc == 'E') {
+			start++;
+			switch (json_str.charAt(start)) {
+				case '-':
+					epositive = false;
+				case '+':
+					start++;
+				default:
+					;
+			}
+			tmpc = json_str.charAt(start);
+			if (tmpc == '0' && json_str.charAt(start + 1) <= '9' && json_str.charAt(start + 1) >= '0') {
+				throw new LexicalException();
+			}
+			while (tmpc >= '0' && tmpc <= '9') {
+				exp *= 10;
+				exp += tmpc - '0';
+			}
+		}
+		return new Carrier(new JsonNumber((positive?1:-1)*(i+frac)*Math.pow(10, (epositive?1:-1)*exp)),start);
+	}
+	private static Carrier eatString(int start, String json_str) {
+		char strQuote = json_str.charAt(start);
+		String realString="";
+		int end, charCode;
+		end = start + 1;
+		while (json_str.charAt(end) != strQuote) {
+			if (json_str.charAt(end) == '\\') {
+				end++;
+				switch (json_str.charAt(end)) {
+					case 'u':
+						charCode = getUnicode(json_str,end + 1);
+						if (charCode < 0) {
+							throw new LexicalException();
+						}
+						end += 4;
+						realString += (char) charCode;
+						break;
+					case '"':
+					case '\'':
+					case '/':
+					case '\\':
+						realString += json_str.charAt(end);
+						break;
+					case 'n':
+						realString += '\n';
+						break;
+					case 'r':
+						realString += '\r';
+						break;
+					case 'b':
+						realString += '\b';
+						break;
+					case 't':
+						realString += '\t';
+						break;
+					default:
+						throw new LexicalException();
+				}
+			} else {
+				realString += json_str.charAt(end);
+			}
+			end++;
+		}
+		return new Carrier(new JsonString(realString), end, realString);
+	}
+	private static boolean isSpace(char c) {
+		return c ==' ' || c == '\t' || c == '\n' || c == '\r';
+	}
+	private static int hex(char c) {
+		if (c >= '0' && c <= '9') {
+			return c - '0';
+		} else if (c >= 'a' && c <= 'f') {
+			return c - 'a' + 10;
+		} else if (c >= 'A' && c <= 'F') {
+			return c - 'A' + 10;
+		} else {
+			return -1;
+		}
+	}
+	private static int getUnicode(String jsstr, int start) {
+		if (hex(jsstr.charAt(start)) >= 0 && hex(jsstr.charAt(start + 1)) >= 0 && hex(jsstr.charAt(start+2)) >= 0 && hex(jsstr.charAt(start+3)) >= 0) {
+			int charCode = 0;
+			charCode += hex(jsstr.charAt(start)) * 0x1000;
+			charCode += hex(jsstr.charAt(start + 1)) * 0x0100;
+			charCode += hex(jsstr.charAt(start + 2)) * 0x0010;
+			charCode += hex(jsstr.charAt(start + 3)) * 0x0001;
+			return charCode;
+		} else {
+			return -1;
+		}
+	}
+}
+
+@SuppressWarnings("serial")
+final class LexicalException extends RuntimeException {}
+@SuppressWarnings("serial")
+final class ParsingException extends RuntimeException {}
 @SuppressWarnings("serial")
 final class IndentStringException extends RuntimeException {}
