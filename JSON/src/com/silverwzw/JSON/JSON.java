@@ -16,6 +16,9 @@ public abstract class JSON implements Cloneable,Serializable,Iterable<Entry<Stri
 
 	protected Object data;
 	protected JSON() {}
+	public static String version() {
+		return "0.1";
+	}
 	public static JSON parse(String json_str){
 		ArrayList<JsonToken> tokens;
 		JSON root;
@@ -160,7 +163,7 @@ public abstract class JSON implements Cloneable,Serializable,Iterable<Entry<Stri
 	private static JSON parseTokenStream(ArrayList<JsonToken> tks, int start, int end) {
 		JsonToken first;
 		int stack;
-		if (start <= end){
+		if (start >= end){
 			throw new ParsingException();
 		}
 		first = tks.get(start); 
@@ -930,12 +933,21 @@ final class JsonToken {
 					throw new LexicalException();
 			}
 			curr = eatSpaces(curr, json_str);
+			if (curr == -1) {
+				break;
+			}
 		}
 		return tokenStream;
 	}
 	private static int eatSpaces(int start, String json_str) {
+		if (start >= json_str.length()) {
+			return -1;
+		}
 		while (isSpace(json_str.charAt(start))) {
 			start++;
+			if (start >= json_str.length()) {
+				return -1;
+			}
 		}
 		return start;
 	}
@@ -1041,7 +1053,7 @@ final class JsonToken {
 			}
 			end++;
 		}
-		return new Carrier(new JsonString(realString), end, realString);
+		return new Carrier(new JsonString(realString), end +  1, realString);
 	}
 	private static boolean isSpace(char c) {
 		return c ==' ' || c == '\t' || c == '\n' || c == '\r';
