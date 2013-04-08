@@ -11,22 +11,50 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.NoSuchElementException;
 
+/**
+ * the JSON object, compiles an Java Object to JSON Object, parse JSON String to JSON object or reverse.
+ * @author Silverwzw
+ */
 @SuppressWarnings("serial")
 public abstract class JSON implements Cloneable,Serializable,Iterable<Entry<String,JSON>> {
 
 	protected Object data;
 	protected JSON() {}
+	/**
+	 * the version of the JSON class
+	 * @return
+	 * the version of the JSON class as String
+	 */
 	public static String version() {
 		return "0.1";
 	}
-	public static JSON parse(String json_str){
+	/**
+	 * parse a standrad JSON string to a JSON object, objects in json will be parsed as HashMap<String,JSON>
+	 * @param json_str
+	 * the JSON string to be parse
+	 * @return
+	 * the JSON object represeted by the given JSON string
+	 * @throws com.silverwzw.JSON.ParsingException
+	 * @throws com.silverwzw.JSON.LexicalException
+	 */
+	public final static JSON parse(String json_str) throws ParsingException, LexicalException{
 		ArrayList<JsonToken> tokens;
 		JSON root;
 		tokens = JsonToken.getTokenStream(json_str);
 		root = parseTokenStream(tokens,0,tokens.size());
 		return root; 
 	}
-	public static JSON compileAs(Object obj, Class<?> objClass){
+	/**
+	 * compile a Java object to JSON object, explicitly specify the type of the Java object<br /><br />
+	 * * usually used when compiling an Java object as an instance of its ancestor class.
+	 * @param obj
+	 * the Object to be compile
+	 * @param objClass
+	 * the class explicitly specified
+	 * @return
+	 * corresponding JSON object
+	 */
+	public final static JSON compileAs(Object obj, Class<?> objClass){
 		if (obj == null) {
 			return new JsonNull();
 		}
@@ -75,7 +103,15 @@ public abstract class JSON implements Cloneable,Serializable,Iterable<Entry<Stri
 		jsmp.data = hm;
 		return jsmp;
 	}
-	public static JSON auto(Object obj) {
+	/**
+	 * compile an Java object to JSON object, automatically determine the type of that Java object<br /><br />
+	 * equivlent to JSON.compileAs(obj, obj.getClass());
+	 * @param obj
+	 * the object to be compiled
+	 * @return
+	 * corresponding JSON object
+	 */
+	public final static JSON auto(Object obj) {
 		if (obj == null) {
 			return new JsonNull();
 		}
@@ -98,7 +134,13 @@ public abstract class JSON implements Cloneable,Serializable,Iterable<Entry<Stri
 		}
 		return "\"" + d + "\"";	
 	}
-	public static JSON JSFunction(String functionBody) {
+	/**
+	 * @deprecated
+	 * @param functionBody
+	 * the javascript representation of the function
+	 * @return
+	 */
+	public final static JSON JSFunction(String functionBody) {
 		return new JsonFunction(functionBody);
 	}
 	protected static boolean implementsInterface(Class<?> objClass, Class<?> interf) {
@@ -110,28 +152,82 @@ public abstract class JSON implements Cloneable,Serializable,Iterable<Entry<Stri
 		}
 		return false;
 	}
+	/**
+	 * get the content of the JSON object, 
+	 * @return
+	 * * HashMap<String,JSON> => if the JSON object is a representation of an object<br />
+	 * * JSON[] => if the JSON object is a representation of an array<br />
+	 * * Integer,Integer,Long,Float,Double => if the JSON object is a representation of a Short,Integer,Long,Float,Double<br />
+	 * * String => if the JSON object is a representation of String<br />
+	 * * Boolean => if the JSON object is a representation of boolean<br />
+	 * * null => if the JSON object is a representation of null
+	 */
 	public abstract Object toObject();
+	/**
+	 * return the JSON String(one line, with no indent) representation of the JSON object
+	 * @return
+	 * the JSON String
+	 */
 	public abstract String toString();
 	public abstract boolean equals(Object json);
 	protected abstract String format(int level, String indentString);
+	/**
+	 * check whether the JSON object represents a direct value. 
+	 * @return
+	 * * true => if content is null, boolean, number, String<br />
+	 * * false => otherwise
+	 */
 	public boolean isDirectValue() {
 		return false;
 	}
+	/**
+	 * check whether the JSON object represents a container. 
+	 * @return
+	 * * true => if content is HashMap, Object, Array, ArrayList<br />
+	 * * false => otherwise
+	 */
 	public boolean isContainer() {
 		return false;
 	}
+	/**
+	 * @deprecated
+	 * check if the JSON object is a representation of a javascript function
+	 * @return
+	 * * true => if it is a representation of a javascript function<br />
+	 * * false => otherwise
+	 */
 	public boolean isFunction() {
 		return false;
 	}
+	/**
+	 * check whether the JSON object represents a null object. 
+	 * @return
+	 * * true => if content is null<br />
+	 * * false => otherwise
+	 */
 	public boolean isNull() {
 		return false;
 	}
+	/**
+	 * return the JSON String (multiple line, with indent) representation of the JSON object
+	 * @param indentString
+	 * the string used as indent
+	 * @return
+	 * the JSON String
+	 * @throws
+	 * com.silverwzw.JSON.IndentStringException
+	 */
 	public String format(String indentString) {
 		if (!indentString.trim().equals("")) {
 			throw new IndentStringException();
 		}
 		return format(0, indentString);
 	}
+	/**
+	 * return the JSON String (multiple line, with indent '\t') representation of the JSON object
+	 * @return
+	 * the JSON String
+	 */
 	public String format() {
 		return format(0,"\t");
 	}
@@ -160,7 +256,7 @@ public abstract class JSON implements Cloneable,Serializable,Iterable<Entry<Stri
 		}
 		return -1;
 	}
-	private static JSON parseTokenStream(ArrayList<JsonToken> tks, int start, int end) {
+	private static JSON parseTokenStream(ArrayList<JsonToken> tks, int start, int end) throws ParsingException {
 		JsonToken first;
 		int stack;
 		if (start >= end){
@@ -854,7 +950,7 @@ final class JsonToken {
 	static JsonToken comma(int start) {
 		return new JsonToken(11,start,start + 1);
 	}
-	public static ArrayList<JsonToken> getTokenStream(String json_str) {
+	public static ArrayList<JsonToken> getTokenStream(String json_str) throws LexicalException {
 		ArrayList<JsonToken> tokenStream = new ArrayList<JsonToken>();
 		int curr;
 		Carrier carrier;
@@ -951,7 +1047,7 @@ final class JsonToken {
 		}
 		return start;
 	}
-	private static Carrier eatNumber(int start, String json_str) {
+	private static Carrier eatNumber(int start, String json_str) throws LexicalException {
 		double frac = 0, esp = 0.1;
 		int i = 0, exp = 0;
 		boolean positive = true, epositive = true;
@@ -1010,7 +1106,7 @@ final class JsonToken {
 		}
 		return new Carrier(new JsonNumber((positive?1:-1)*(i+frac)*Math.pow(10, (epositive?1:-1)*exp)),start);
 	}
-	private static Carrier eatString(int start, String json_str) {
+	private static Carrier eatString(int start, String json_str) throws LexicalException {
 		char strQuote = json_str.charAt(start);
 		String realString="";
 		int end, charCode;
@@ -1082,10 +1178,3 @@ final class JsonToken {
 		}
 	}
 }
-
-@SuppressWarnings("serial")
-final class LexicalException extends RuntimeException {}
-@SuppressWarnings("serial")
-final class ParsingException extends RuntimeException {}
-@SuppressWarnings("serial")
-final class IndentStringException extends RuntimeException {}
