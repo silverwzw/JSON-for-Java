@@ -24,6 +24,14 @@ public abstract class JSON implements Cloneable,Serializable,Iterable<Entry<Stri
 
 	protected Object data;
 	protected JSON() {}
+	
+	public final static class OperationNotDefinedException extends RuntimeException {
+		OperationNotDefinedException(String s) {super(s);};
+	}
+
+	public final static class IndentStringException extends RuntimeException {}
+	public final static class LexicalException extends Exception {}
+	public final static class ParsingException extends Exception {}
 	/**
 	 * the version of the JSON class
 	 * @return
@@ -200,6 +208,31 @@ public abstract class JSON implements Cloneable,Serializable,Iterable<Entry<Stri
 	 * * null => if the JSON object is a representation of null
 	 */
 	public abstract Object toObject();
+	/**
+	 * get a child JSON of a JsonMap by its name
+	 * @param name the name of the child JSON entry
+	 * @return the child JSON
+	 * @throws OperationNotDefinedException if the Object is not an instance of JsonMap
+	 */
+	@SuppressWarnings("unchecked")
+	public JSON get(String name) {
+		if (!this.getClass().equals(JsonMap.class)) {
+			throw new OperationNotDefinedException("get() is only defined in JsonMap.");
+		}
+		return ((Map<String,JSON>) data).get(name);
+	}
+	/**
+	 * get a child JSON of a JsonMap by its index
+	 * @param index the index of the child JSON entry
+	 * @return the child JSON
+	 * @throws OperationNotDefinedException if the Object is not an instance of JsonArray
+	 */
+	public JSON at(int index) {
+		if (!this.getClass().equals(JsonArray.class)) {
+			throw new OperationNotDefinedException("at() is only defined in JsonArray.");
+		}
+		return ((JSON[]) data)[index];
+	}
 	/**
 	 * return the JSON String(one line, with no indent) representation of the JSON object
 	 * @return
@@ -987,7 +1020,7 @@ final class JsonToken {
 	static JsonToken comma(int start) {
 		return new JsonToken(11,start,start + 1);
 	}
-	public static ArrayList<JsonToken> getTokenStream(String json_str) throws LexicalException {
+	public static ArrayList<JsonToken> getTokenStream(String json_str) throws JSON.LexicalException {
 		ArrayList<JsonToken> tokenStream = new ArrayList<JsonToken>();
 		int curr;
 		Carrier carrier;
@@ -1043,27 +1076,27 @@ final class JsonToken {
 					break;
 				case 'n':
 					if (!json_str.substring(curr, curr + 4).equals("null")) {
-						throw new LexicalException();
+						throw new JSON.LexicalException();
 					}
 					tokenStream.add(JsonToken.empty(curr, curr+4));
 					curr += 4;
 					break;
 				case 't':
 					if (!json_str.substring(curr, curr + 4).equals("true")) {
-						throw new LexicalException();
+						throw new JSON.LexicalException();
 					}
 					tokenStream.add(JsonToken.bool(curr, curr + 4, new JsonBoolean(true)));
 					curr += 4;
 					break;
 				case 'f':
 					if (!json_str.substring(curr, curr + 5).equals("false")) {
-						throw new LexicalException();
+						throw new JSON.LexicalException();
 					}
 					tokenStream.add(JsonToken.bool(curr, curr + 5, new JsonBoolean(false)));
 					curr += 5;
 					break;
 				default:
-					throw new LexicalException();
+					throw new JSON.LexicalException();
 			}
 			curr = eatSpaces(curr, json_str);
 			if (curr == -1) {
@@ -1084,7 +1117,7 @@ final class JsonToken {
 		}
 		return start;
 	}
-	private static Carrier eatNumber(int start, String json_str) throws LexicalException {
+	private static Carrier eatNumber(int start, String json_str) throws JSON.LexicalException {
 		double frac = 0, esp = 0.1;
 		int i = 0, exp = 0;
 		boolean positive = true, epositive = true;
@@ -1101,7 +1134,7 @@ final class JsonToken {
 		//eat int
 		tmpc = json_str.charAt(start);
 		if (tmpc == '0' && json_str.charAt(start + 1) <= '9' && json_str.charAt(start + 1) >= '0' ) {
-			throw new LexicalException();
+			throw new JSON.LexicalException();
 		}
 		while (tmpc <= '9' && tmpc >= '0'){
 			i *= 10;
@@ -1134,7 +1167,7 @@ final class JsonToken {
 			}
 			tmpc = json_str.charAt(start);
 			if (tmpc == '0' && json_str.charAt(start + 1) <= '9' && json_str.charAt(start + 1) >= '0') {
-				throw new LexicalException();
+				throw new JSON.LexicalException();
 			}
 			while (tmpc >= '0' && tmpc <= '9') {
 				exp *= 10;
@@ -1143,7 +1176,7 @@ final class JsonToken {
 		}
 		return new Carrier(new JsonNumber((positive?1:-1)*(i+frac)*Math.pow(10, (epositive?1:-1)*exp)),start);
 	}
-	private static Carrier eatString(int start, String json_str) throws LexicalException {
+	private static Carrier eatString(int start, String json_str) throws JSON.LexicalException {
 		char strQuote = json_str.charAt(start);
 		String realString="";
 		int end, charCode;
@@ -1155,7 +1188,7 @@ final class JsonToken {
 					case 'u':
 						charCode = getUnicode(json_str,end + 1);
 						if (charCode < 0) {
-							throw new LexicalException();
+							throw new JSON.LexicalException();
 						}
 						end += 4;
 						realString += (char) charCode;
@@ -1179,7 +1212,7 @@ final class JsonToken {
 						realString += '\t';
 						break;
 					default:
-						throw new LexicalException();
+						throw new JSON.LexicalException();
 				}
 			} else {
 				realString += json_str.charAt(end);
