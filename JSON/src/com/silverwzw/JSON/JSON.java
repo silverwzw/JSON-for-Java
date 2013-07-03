@@ -1,5 +1,9 @@
 package com.silverwzw.JSON;
 
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
+import java.io.IOException;
 import java.io.Serializable;
 import java.lang.reflect.Array;
 import java.lang.reflect.Field;
@@ -29,11 +33,44 @@ public abstract class JSON implements Cloneable,Serializable,Iterable<Entry<Stri
 		return "0.1";
 	}
 	/**
-	 * parse a standrad JSON string to a JSON object, objects in json will be parsed as HashMap<String,JSON>
+	 * read a ASCII file contains one standard JSON string, objects in json will be parsed as HashMap<String,JSON>
+	 * @param file
+	 * the JSON file
+	 * @return
+	 * the JSON object represented by the given JSON string
+	 * @throws com.silverwzw.JSON.ParsingException
+	 * @throws com.silverwzw.JSON.LexicalException
+	 * @throws IOException 
+	 */
+	public final static JSON parse(File file) throws ParsingException, LexicalException, IOException {
+		String s, tmp;
+		BufferedReader reader = null;
+		FileReader fr = null;
+		
+		s = "";
+		
+		try {
+			fr = new FileReader(file);
+			reader = new BufferedReader(fr);
+			while ((tmp = reader.readLine()) != null) {
+				s += tmp;
+			}
+		} finally {
+			if (reader != null) {
+				reader.close();
+			}
+			if (fr != null) {
+				fr.close();
+			}
+		}
+		return parse(s);
+	}
+	/**
+	 * parse a standard JSON string to a JSON object, objects in json will be parsed as HashMap<String,JSON>
 	 * @param json_str
 	 * the JSON string to be parse
 	 * @return
-	 * the JSON object represeted by the given JSON string
+	 * the JSON object represented by the given JSON string
 	 * @throws com.silverwzw.JSON.ParsingException
 	 * @throws com.silverwzw.JSON.LexicalException
 	 */
@@ -105,7 +142,7 @@ public abstract class JSON implements Cloneable,Serializable,Iterable<Entry<Stri
 	}
 	/**
 	 * compile an Java object to JSON object, automatically determine the type of that Java object<br /><br />
-	 * equivlent to JSON.compileAs(obj, obj.getClass());
+	 * Equivalent to JSON.compileAs(obj, obj.getClass());
 	 * @param obj
 	 * the object to be compiled
 	 * @return
