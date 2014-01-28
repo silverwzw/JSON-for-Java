@@ -234,7 +234,7 @@ public abstract class JSON implements Cloneable,Serializable,Iterable<Entry<Stri
 	/**
 	 * get a child JSON of a JsonMap by its name
 	 * @param name the name of the child JSON entry
-	 * @return the child JSON
+	 * @return the child JSON, or null if there's no corresponding child element.
 	 * @throws OperationNotDefinedException if the Object is not an instance of JsonMap
 	 */
 	@SuppressWarnings("unchecked")
@@ -244,6 +244,11 @@ public abstract class JSON implements Cloneable,Serializable,Iterable<Entry<Stri
 		}
 		return ((Map<String,JSON>) data).get(name);
 	}
+	/**
+	 * get the size of JSON object
+	 * @return if this is a direct value => return 1<br>otherwise, return the size of the container.
+	 */
+	public abstract int size();
 	/**
 	 * get a child JSON of a JsonMap by its index
 	 * @param index the index of the child JSON entry
@@ -479,6 +484,9 @@ abstract class JsonDirectValue extends JSON {
 	}
 	public Iterator<Entry<String,JSON>> iterator() {
 		return new JsonDummyIter();
+	}
+	public final int size() {
+		return 1;
 	}
 }
 
@@ -768,6 +776,9 @@ final class JsonArray extends JsonContainer {
 	public Iterator<Entry<String,JSON>> iterator() {
 		return new JsonArrayIter(this);
 	}
+	public final int size() {
+		return Array.getLength(data);
+	}
 }
 
 @SuppressWarnings("serial")
@@ -869,6 +880,10 @@ final class JsonMap extends JsonContainer {
 	@SuppressWarnings("unchecked")
 	public Iterator<Entry<String,JSON>> iterator() {
 		return ((HashMap<String,JSON>) data).entrySet().iterator();
+	}
+	@SuppressWarnings("unchecked")
+	public final int size() {
+		return ((HashMap<String,JSON) data).size();
 	}
 }
 
